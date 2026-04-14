@@ -141,9 +141,10 @@ def _is_direct_message(event: dict, client) -> bool:
 
 
 def create_app() -> App:
-    signing = os.environ.get("SLACK_SIGNING_SECRET")
+    signing = (os.environ.get("SLACK_SIGNING_SECRET") or "").strip() or None
+    bot_token = (os.environ.get("SLACK_BOT_TOKEN") or "").strip() or None
     app = App(
-        token=os.environ.get("SLACK_BOT_TOKEN"),
+        token=bot_token,
         signing_secret=signing,
     )
 
@@ -167,19 +168,19 @@ def create_app() -> App:
 
 
 def main() -> None:
-    if not os.environ.get("SLACK_BOT_TOKEN"):
+    if not (os.environ.get("SLACK_BOT_TOKEN") or "").strip():
         print("SLACK_BOT_TOKEN is required", file=sys.stderr)
         sys.exit(1)
 
     app = create_app()
-    app_token = os.environ.get("SLACK_APP_TOKEN")
+    app_token = (os.environ.get("SLACK_APP_TOKEN") or "").strip() or None
 
     if app_token:
         logger.info("Starting Socket Mode handler")
         SocketModeHandler(app, app_token).start()
         return
 
-    signing = os.environ.get("SLACK_SIGNING_SECRET")
+    signing = (os.environ.get("SLACK_SIGNING_SECRET") or "").strip() or None
     if not signing:
         print(
             "Either SLACK_APP_TOKEN (Socket Mode) or SLACK_SIGNING_SECRET (HTTP) is required.",
