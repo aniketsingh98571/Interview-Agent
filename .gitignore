@@ -2,3 +2,7 @@
 __pycache__/
 .env
 *.pyc
+.DS_Store
+dist/
+data/
+node_modules/
