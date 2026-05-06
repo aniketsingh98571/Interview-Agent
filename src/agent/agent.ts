@@ -29,9 +29,55 @@ function stateToText(state: ConversationState): string {
   return `${cand}, ${rnd}`;
 }
 
+function isInterviewRelated(text: string): boolean {
+  const t = (text ?? "").trim().toLowerCase();
+  if (!t) return true;
+
+  // Always allow obvious supported commands/verbs.
+  const allow = [
+    "help",
+    "save",
+    "record",
+    "feedback",
+    "candidate",
+    "round",
+    "interviewer",
+    "list rounds",
+    "get feedback",
+    "questions",
+    "follow-up",
+    "follow up",
+    "interview",
+    "hld",
+    "lld",
+    "dsa",
+    "hm",
+    "behavioral",
+    "system design",
+    "sysdesign",
+  ];
+  if (allow.some((k) => t.includes(k))) return true;
+
+  // If it looks like a general chat request, treat as out-of-scope.
+  return false;
+}
+
 export async function runAgent(rawText: string, ctx: AgentContext & { threadContext?: string }): Promise<string> {
   const { text, threadContext } = AgentInputSchema.parse({ text: rawText, threadContext: ctx.threadContext });
   const state = await getThreadState(ctx.thread);
+
+  if (!isInterviewRelated(text)) {
+    return [
+      "I can only help with interview feedback and interview follow-up questions.",
+      "",
+      "Try:",
+      "- `help`",
+      "- `save feedback John Doe round 1 dsa interviewer Alice: <notes>`",
+      "- `list rounds for John Doe`",
+      "- `get feedback John Doe round 3`",
+      "- `what questions should I ask this candidate?`",
+    ].join("\n");
+  }
 
   const baseURL = ctx.env.OLLAMA_BASE_URL.replace(/\/+$/g, "");
   const providerBaseURL = baseURL.endsWith("/api") ? baseURL : `${baseURL}/api`;
