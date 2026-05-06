@@ -2,6 +2,27 @@ import { App, ExpressReceiver } from "@slack/bolt";
 import type { Env } from "../config/env.js";
 import { runAgent } from "../agent/agent.js";
 
+function formatSlackMrkdwn(markdown: string): string {
+  let t = String(markdown ?? "");
+
+  // Remove fenced code blocks (Slack would render them as a big grey code box).
+  // Keep the content; most of our outputs are regular markdown, not actual code.
+  t = t.replace(/```[a-zA-Z0-9_-]*\s*\n([\s\S]*?)\n?```\s*/g, (_m, inner) => String(inner ?? ""));
+
+  // Convert Markdown bold (**text**) to Slack bold (*text*).
+  // Avoid touching already-Slack bold markers.
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, (_m, inner) => `*${inner}*`);
+
+  // Slack mrkdwn does not support Markdown headings; turn them into bold lines.
+  // e.g. "## Title" -> "*Title*"
+  t = t.replace(/^\s{0,3}#{1,6}\s+(.+?)\s*$/gm, (_m, title) => `*${title}*`);
+
+  // Slack list rendering is sensitive to indentation; normalize common cases.
+  t = t.replace(/^\s{2,}(-\s+)/gm, "$1");
+
+  return t;
+}
+
 function helpText(): string {
   return [
     "*Interview Feedback Agent*",
@@ -45,6 +66,22 @@ function slackSafeText(text: string): string {
   const maxLen = 39_000;
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen - 80) + "\n\n_(truncated for Slack length limits)_";
+}
+
+function slackBlocksFromMarkdown(markdown: string): any[] {
+  // Section blocks are limited to 3000 characters.
+  const maxChunkLen = 2900;
+  const text = formatSlackMrkdwn(slackSafeText(markdown));
+
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += maxChunkLen) {
+    chunks.push(text.slice(i, i + maxChunkLen));
+  }
+
+  return chunks.map((chunk) => ({
+    type: "section",
+    text: { type: "mrkdwn", text: chunk || " " },
+  }));
 }
 
 async function buildThreadContext(client: any, event: any): Promise<string> {
@@ -144,7 +181,7 @@ function registerHandlers(app: App, env: Env) {
           channel: (event as any).channel,
           thread_ts: (event as any).thread_ts ?? (event as any).ts,
           text: "Say something after the mention. Try `help`.",
-          mrkdwn: true,
+          blocks: slackBlocksFromMarkdown("Say something after the mention. Try `help`."),
         });
         return;
       }
@@ -154,12 +191,21 @@ function registerHandlers(app: App, env: Env) {
           channel: (event as any).channel,
           thread_ts: (event as any).thread_ts ?? (event as any).ts,
           text: helpText(),
-          mrkdwn: true,
+          blocks: slackBlocksFromMarkdown(helpText()),
         });
         return;
       }
 
       const threadContext = await buildThreadContext(client, event);
+
+      const placeholderText = "_Thinking…_";
+      const placeholder = await client.chat.postMessage({
+        channel: (event as any).channel,
+        thread_ts: (event as any).thread_ts ?? (event as any).ts,
+        text: placeholderText,
+        blocks: slackBlocksFromMarkdown(placeholderText),
+      });
+
       const out = await runAgent(cleaned, {
         env: {
           OLLAMA_BASE_URL: env.OLLAMA_BASE_URL,
@@ -171,11 +217,11 @@ function registerHandlers(app: App, env: Env) {
         threadContext,
       });
 
-      await client.chat.postMessage({
+      await client.chat.update({
         channel: (event as any).channel,
-        thread_ts: (event as any).thread_ts ?? (event as any).ts,
+        ts: String((placeholder as any)?.ts ?? ""),
         text: slackSafeText(out),
-        mrkdwn: true,
+        blocks: slackBlocksFromMarkdown(out),
       });
     } catch (e: any) {
       logger?.error(e);
@@ -196,12 +242,21 @@ function registerHandlers(app: App, env: Env) {
           channel: ev.channel,
           thread_ts: ev.thread_ts ?? ev.ts,
           text: helpText(),
-          mrkdwn: true,
+          blocks: slackBlocksFromMarkdown(helpText()),
         });
         return;
       }
 
       const threadContext = await buildThreadContext(client, ev);
+
+      const placeholderText = "_Thinking…_";
+      const placeholder = await client.chat.postMessage({
+        channel: ev.channel,
+        thread_ts: ev.thread_ts ?? ev.ts,
+        text: placeholderText,
+        blocks: slackBlocksFromMarkdown(placeholderText),
+      });
+
       const out = await runAgent(text, {
         env: {
           OLLAMA_BASE_URL: env.OLLAMA_BASE_URL,
@@ -213,11 +268,11 @@ function registerHandlers(app: App, env: Env) {
         threadContext,
       });
 
-      await client.chat.postMessage({
+      await client.chat.update({
         channel: ev.channel,
-        thread_ts: ev.thread_ts ?? ev.ts,
+        ts: String((placeholder as any)?.ts ?? ""),
         text: slackSafeText(out),
-        mrkdwn: true,
+        blocks: slackBlocksFromMarkdown(out),
       });
     } catch (e: any) {
       logger?.error(e);
@@ -230,14 +285,25 @@ function registerHandlers(app: App, env: Env) {
     try {
       const text = String(command.text ?? "").trim();
       if (!text) {
-        await respond("Usage: `/feedback <your message>` (e.g. `/feedback get feedback John`)");
+        await respond({
+          text: "Usage: `/feedback <your message>` (e.g. `/feedback get feedback John`)",
+          blocks: slackBlocksFromMarkdown(
+            "Usage: `/feedback <your message>` (e.g. `/feedback get feedback John`)",
+          ),
+        });
         return;
       }
 
       if (isHelpMessage(text)) {
-        await respond(helpText());
+        await respond({ text: helpText(), blocks: slackBlocksFromMarkdown(helpText()) });
         return;
       }
+
+      const placeholderText = "_Thinking…_";
+      await respond({
+        text: placeholderText,
+        blocks: slackBlocksFromMarkdown(placeholderText),
+      });
 
       const out = await runAgent(text, {
         env: {
@@ -250,10 +316,15 @@ function registerHandlers(app: App, env: Env) {
         threadContext: "",
       });
 
-      await respond(slackSafeText(out));
+      await respond({
+        replace_original: true,
+        text: slackSafeText(out),
+        blocks: slackBlocksFromMarkdown(out),
+      });
     } catch (e: any) {
       logger?.error(e);
-      await respond(`Error: ${String(e?.message ?? e)}`);
+      const msg = `Error: ${String(e?.message ?? e)}`;
+      await respond({ replace_original: true, text: msg, blocks: slackBlocksFromMarkdown(msg) });
     }
   });
 }

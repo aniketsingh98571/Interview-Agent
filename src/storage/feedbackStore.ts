@@ -193,9 +193,10 @@ export async function saveFeedback(input: SaveFeedbackInput): Promise<SaveFeedba
 
   // File spec (user request): candidateName_interviewer_name_round.md
   // We keep `candidateSlug/` directory, but also include candidate/interviewer in the filename.
-  // To avoid overwrites when parsing is ambiguous, we include the parsed canonical round token.
-  const { canonical } = parseRound(input.round);
-  const fileName = `${candidateSlug}_${interviewerSlug}_round-${canonical}.md`;
+  // Store round in filename as a number only (e.g. round-3.md).
+  // Still include interviewer to avoid overwrites across interviewers.
+  const fileRoundNumber = roundNumber ?? 0;
+  const fileName = `${candidateSlug}_${interviewerSlug}_round-${fileRoundNumber}.md`;
   const filePath = path.join(candidateDir, fileName);
 
   const markdown = strictMarkdownDoc({
@@ -239,13 +240,13 @@ function extractRoundLabelFromFilename(filePath: string): string | null {
   // Old format:
   //   round-{n}-{type}-{interviewer}.md  => canonical: {n}-{type}
   const old = base.match(/^round-([0-9]+)-([a-z0-9-]+)-/i);
-  if (old) return `${Number(old[1])}-${old[2]}`;
+  if (old) return String(Number(old[1]));
 
   // New format:
-  //   {candidateSlug}_{interviewerSlug}_round-{canonical}.md
-  const nu = base.match(/_round-([a-z0-9-]+)\.md$/i);
+  //   {candidateSlug}_{interviewerSlug}_round-{n}.md
+  const nu = base.match(/_round-([0-9]+)\.md$/i);
   if (!nu) return null;
-  return nu[1] ?? null;
+  return nu[1] ? String(Number(nu[1])) : null;
 }
 
 export async function listRounds(candidateName: string): Promise<ListRoundsResult> {
@@ -269,17 +270,17 @@ export async function getFeedback(candidateName: string, round: string): Promise
   }
 
   const parsed = parseRound(round);
-  const wantedCanonical = parsed.canonical;
+  const wantedRoundNumber = parsed.roundNumber ?? 0;
 
   const matching = files.filter((fp) => {
     const base = path.basename(fp);
 
     // New format match
-    if (base.includes(`_round-${wantedCanonical}.md`)) return true;
+    if (base.includes(`_round-${wantedRoundNumber}.md`)) return true;
 
     // Old format match (best-effort)
     // old filename: round-{n}-{type}-{interviewer}.md
-    const oldPrefix = `round-${wantedCanonical.split("-")[0]}-`;
+    const oldPrefix = `round-${wantedRoundNumber}-`;
     if (base.startsWith(oldPrefix)) return true;
 
     return false;

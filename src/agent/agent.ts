@@ -1,4 +1,4 @@
-import { generateObject, generateText, stepCountIs, tool } from "ai";
+import { extractJsonMiddleware, generateText, Output, stepCountIs, tool, wrapLanguageModel } from "ai";
 import { createOllama } from "ollama-ai-provider-v2";
 import { z } from "zod";
 import type { ConversationState, ThreadKey } from "../state/threadState.js";
@@ -53,16 +53,22 @@ export async function runAgent(rawText: string, ctx: AgentContext & { threadCont
 
   async function doSaveFeedback(args: z.infer<typeof SaveArgsSchema>) {
     const ExtractSchema = z.object({
-      strengths: z.string().optional(),
-      weaknesses: z.string().optional(),
-      verdict: z.string().optional(),
+      strengths: z.string(),
+      weaknesses: z.string(),
+      verdict: z.string(),
     });
 
-    let extractedObj: z.infer<typeof ExtractSchema> = {};
+    let extractedObj: z.infer<typeof ExtractSchema> = { strengths: "", weaknesses: "", verdict: "" };
+    console.log(args.feedback,"args.feedback")
     try {
-      const extracted = await generateObject({
+      const extractionModel = wrapLanguageModel({
         model,
-        schema: ExtractSchema,
+        middleware: extractJsonMiddleware(),
+      });
+
+      const extracted = await generateText({
+        model: extractionModel,
+        output: Output.object({ schema: ExtractSchema }),
         prompt: `You are given a candidate's interviewer feedback (free-form text).
 
 Extract evidence-based bullet-style summaries into these fields:
@@ -74,17 +80,19 @@ Rules:
 - Do NOT add or infer facts that are not present.
 - Rephrase using wording from the feedback as much as possible.
 - If a field is not supported by the feedback, return "" for that field.
+- Return ONLY a valid JSON object with exactly these keys: strengths, weaknesses, verdict (string values).
 
 Feedback:
 ${args.feedback}
 `,
       });
-      extractedObj = extracted.object ?? {};
-    } catch {
+      extractedObj = extracted.output ?? { strengths: "", weaknesses: "", verdict: "" };
+    } catch (err) {
+      console.error("Feedback extraction failed:", err);
       // If extraction fails, still save the feedback; leave structured fields empty.
-      extractedObj = {};
+      extractedObj = { strengths: "", weaknesses: "", verdict: "" };
     }
-
+console.log(extractedObj,"extractedObj")
     const res = await saveFeedback({
       candidateName: args.candidateName,
       round: args.round,
