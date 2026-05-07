@@ -1,0 +1,32 @@
+{
+  "name": "interview-feedback-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node --enable-source-maps dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "eval": "npx lmnr eval",
+    "eval:tools": "npx lmnr eval evals/interview-tools.eval.ts",
+    "eval:agent": "npx lmnr eval evals/agent-multiturn.eval.ts"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.5.0",
+    "@lmnr-ai/lmnr": "^0.7.16",
+    "ai": "^6.0.0",
+    "dotenv": "^16.6.1",
+    "ollama-ai-provider-v2": "^3.5.0",
+    "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "tsx": "^4.20.5",
+    "typescript": "^5.8.3"
+  }
+}
+

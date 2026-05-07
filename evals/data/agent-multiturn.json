@@ -1,0 +1,82 @@
+[
+  {
+    "metadata": { "description": "Ask follow-ups should use get_feedback and web_search" },
+    "data": {
+      "prompt": "What questions should I ask this candidate? Candidate is John Doe round 1.",
+      "mockTools": {
+        "get_feedback": {
+          "description": "Get feedback markdown for a candidate and round.",
+          "parameters": { "candidateName": "string", "round": "string" },
+          "mockReturn": "## Weaknesses\n- Struggled with dynamic programming\n- Missed edge cases\n"
+        },
+        "web_search": {
+          "description": "Search the web for targeted areas.",
+          "parameters": { "query": "string" },
+          "mockReturn": "Summary: Common DP interview follow-ups include state definition, transitions, and complexity trade-offs."
+        }
+      },
+      "config": { "maxSteps": 8 }
+    },
+    "target": {
+      "originalTask": "Generate follow-up interview questions grounded in feedback weaknesses and web search.",
+      "expectedToolOrder": ["get_feedback", "web_search"],
+      "mockToolResults": {
+        "get_feedback": "## Weaknesses\\n- Struggled with dynamic programming\\n- Missed edge cases\\n",
+        "web_search": "Summary: Common DP interview follow-ups include state definition, transitions, and complexity trade-offs."
+      },
+      "category": "task-completion"
+    }
+  },
+  {
+    "metadata": { "description": "Save feedback missing candidate/round/interviewer should ask" },
+    "data": {
+      "prompt": "save feedback",
+      "mockTools": {},
+      "config": { "maxSteps": 4 }
+    },
+    "target": {
+      "originalTask": "User wants to save feedback but didn't provide candidate name, round, or interviewer. Ask exactly one clear question requesting the required fields.",
+      "forbiddenTools": ["save_feedback", "list_rounds", "get_feedback", "web_search", "clear_thread_state"],
+      "mockToolResults": {},
+      "category": "conversation-continuation"
+    }
+  },
+  {
+    "metadata": { "description": "Get feedback without round should ask which round" },
+    "data": {
+      "prompt": "get feedback for Neelambari",
+      "mockTools": {
+        "list_rounds": {
+          "description": "List all available feedback rounds for a candidate (without fetching any feedback).",
+          "parameters": { "candidateName": "string" },
+          "mockReturn": "Available rounds for *Neelambari*:\n- 1\n- 2"
+        }
+      },
+      "config": { "maxSteps": 6 }
+    },
+    "target": {
+      "originalTask": "User asked for feedback without specifying a round. The agent should ask which round (ideally after listing available rounds).",
+      "expectedToolOrder": ["list_rounds"],
+      "forbiddenTools": ["get_feedback"],
+      "mockToolResults": {
+        "list_rounds": "Available rounds for *Neelambari*:\n- 1\n- 2"
+      },
+      "category": "task-completion"
+    }
+  },
+  {
+    "metadata": { "description": "Save feedback missing feedback body should ask for it" },
+    "data": {
+      "prompt": "save feedback John Doe round 1 interviewer Alice",
+      "mockTools": {},
+      "config": { "maxSteps": 4 }
+    },
+    "target": {
+      "originalTask": "User wants to save feedback but did not include the feedback text. Ask exactly one clear question requesting the feedback text (and confirm any missing required fields if needed).",
+      "forbiddenTools": ["save_feedback"],
+      "mockToolResults": {},
+      "category": "conversation-continuation"
+    }
+  }
+]
+

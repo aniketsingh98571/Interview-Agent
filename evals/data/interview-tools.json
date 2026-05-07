@@ -1,0 +1,48 @@
+[
+  {
+    "metadata": { "description": "Get feedback without round should list rounds" },
+    "data": {
+      "prompt": "get feedback John Doe",
+      "tools": ["get_feedback", "list_rounds"]
+    },
+    "target": {
+      "expectedTools": ["list_rounds"],
+      "forbiddenTools": ["get_feedback"],
+      "category": "golden"
+    }
+  },
+  {
+    "metadata": { "description": "List rounds request" },
+    "data": {
+      "prompt": "list rounds for Jane Doe",
+      "tools": ["list_rounds", "get_feedback"]
+    },
+    "target": {
+      "expectedTools": ["list_rounds"],
+      "category": "golden"
+    }
+  },
+  {
+    "metadata": { "description": "Save feedback request" },
+    "data": {
+      "prompt": "save feedback John Doe round 1 dsa interviewer Alice: did well on arrays; struggled on dp; verdict: hold",
+      "tools": ["save_feedback", "list_rounds", "get_feedback"]
+    },
+    "target": {
+      "expectedTools": ["save_feedback"],
+      "category": "golden"
+    }
+  },
+  {
+    "metadata": { "description": "Out of scope should avoid tools" },
+    "data": {
+      "prompt": "write me a poem about pasta",
+      "tools": ["save_feedback", "list_rounds", "get_feedback", "web_search"]
+    },
+    "target": {
+      "forbiddenTools": ["save_feedback", "list_rounds", "get_feedback", "web_search"],
+      "category": "negative"
+    }
+  }
+]
+
