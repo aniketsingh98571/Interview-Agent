@@ -74,17 +74,17 @@ flowchart LR
     end
 
     subgraph runtime [Node.js + TypeScript]
-        SB[src/slack/slackApp.ts\nBolt + Socket or HTTP]
-        AG[src/agent/agent.ts\nVercel AI SDK Agent]
-        ST[(data/thread_state\nper-thread JSON state)]
-        FS[(data/feedback\nmarkdown files)]
-        TO[src/tools/*\nweb_search + feedback tools]
+        SB["src/slack/slackApp.ts<br/>Bolt + Socket or HTTP"]
+        AG["src/agent/agent.ts<br/>Vercel AI SDK Agent"]
+        ST[("data/thread_state<br/>per-thread JSON state")]
+        FS[("data/feedback<br/>markdown files")]
+        TO["src/tools/*<br/>web_search + feedback tools"]
     end
 
     subgraph external [External services]
-        OLL[Ollama API\n/api]
-        DDG[DuckDuckGo\nInstant Answer API]
-        TAV[Tavily (optional)]
+        OLL["Ollama API<br/>/api"]
+        DDG["DuckDuckGo<br/>Instant Answer API"]
+        TAV["Tavily optional"]
     end
 
     U <-->|Events + chat.postMessage| SB
