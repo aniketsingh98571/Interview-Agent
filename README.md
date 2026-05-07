@@ -4,9 +4,7 @@ A Slack bot that helps recruiters and interviewers **store**, **retrieve**, and 
 
 ---
 
-## TypeScript (production-ready) implementation
-
-This repo now includes a **TypeScript + Vercel AI SDK** implementation that:
+This repo includes a **TypeScript + Vercel AI SDK** implementation that:
 
 - Stores feedback on the **local filesystem** as structured markdown in `data/feedback/`
 - Supports **multiple rounds** per candidate
