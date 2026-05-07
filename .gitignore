@@ -5,4 +5,6 @@ __pycache__/
 .DS_Store
 dist/
 data/
+!evals/data/
+!evals/data/*.json
 node_modules/
