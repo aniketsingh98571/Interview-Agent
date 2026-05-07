@@ -235,6 +235,51 @@ async function listCandidateFiles(candidateSlug: string): Promise<string[]> {
   }
 }
 
+async function listCandidateSlugs(): Promise<string[]> {
+  try {
+    const entries = await fs.readdir(FEEDBACK_DIR, { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory()).map((e) => e.name).filter(Boolean);
+  } catch (e: any) {
+    if (e?.code === "ENOENT") return [];
+    throw e;
+  }
+}
+
+async function resolveCandidateSlug(candidateName: string): Promise<{ slug: string; candidates?: string[] }> {
+  const wanted = slugify(candidateName);
+
+  // Fast path: exact directory exists
+  try {
+    const st = await fs.stat(path.join(FEEDBACK_DIR, wanted));
+    if (st.isDirectory()) return { slug: wanted };
+  } catch {
+    // ignore
+  }
+
+  // Fuzzy match: slug contains query OR token overlap
+  const all = await listCandidateSlugs();
+  if (!wanted || wanted === "unknown") return { slug: wanted, candidates: all };
+
+  const wantedTokens = new Set(wanted.split("-").filter(Boolean));
+  const scored = all
+    .map((s) => {
+      const slug = String(s);
+      if (!slug) return null;
+      const exactContains = slug.includes(wanted) ? 100 : 0;
+      const tokens = slug.split("-").filter(Boolean);
+      const overlap = tokens.reduce((acc, t) => acc + (wantedTokens.has(t) ? 1 : 0), 0);
+      const score = exactContains + overlap;
+      return { slug, score };
+    })
+    .filter((x): x is { slug: string; score: number } => x !== null && x.score > 0)
+    .sort((a, b) => b.score - a.score || a.slug.localeCompare(b.slug));
+
+  const best = scored[0];
+  if (scored.length === 1 && best) return { slug: best.slug };
+  if (scored.length > 1 && best) return { slug: best.slug, candidates: scored.map((s) => s.slug).slice(0, 10) };
+  return { slug: wanted, candidates: all.slice(0, 10) };
+}
+
 function extractRoundLabelFromFilename(filePath: string): string | null {
   const base = path.basename(filePath);
   // Old format:
@@ -244,29 +289,34 @@ function extractRoundLabelFromFilename(filePath: string): string | null {
 
   // New format:
   //   {candidateSlug}_{interviewerSlug}_round-{n}.md
-  const nu = base.match(/_round-([0-9]+)\.md$/i);
+  //   (also seen in the wild): {candidateSlug}_{interviewerSlug}_round-{n}-{suffix}.md
+  const nu = base.match(/_round-([0-9]+)(?:-[a-z0-9-]+)?\.md$/i);
   if (!nu) return null;
   return nu[1] ? String(Number(nu[1])) : null;
 }
 
 export async function listRounds(candidateName: string): Promise<ListRoundsResult> {
-  const candidateSlug = slugify(candidateName);
+  const resolved = await resolveCandidateSlug(candidateName);
+  const candidateSlug = resolved.slug;
   const files = await listCandidateFiles(candidateSlug);
   const rounds = Array.from(
     new Set(files.map(extractRoundLabelFromFilename).filter((x): x is string => Boolean(x))),
   ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
   if (files.length === 0) {
-    return { ok: false, error: `No feedback found for candidate "${candidateName}".`, rounds: [] };
+    const suffix = resolved.candidates?.length ? ` Available candidates: ${resolved.candidates.join(", ")}` : "";
+    return { ok: false, error: `No feedback found for candidate "${candidateName}".${suffix}`, rounds: [] };
   }
   return { ok: true, candidateName: normalizeCandidateName(candidateName), candidateSlug, rounds };
 }
 
 export async function getFeedback(candidateName: string, round: string): Promise<GetFeedbackResult> {
-  const candidateSlug = slugify(candidateName);
+  const resolved = await resolveCandidateSlug(candidateName);
+  const candidateSlug = resolved.slug;
   const files = await listCandidateFiles(candidateSlug);
   if (files.length === 0) {
-    return { ok: false, error: `No feedback found for candidate "${candidateName}".`, availableRounds: [] };
+    const suffix = resolved.candidates?.length ? ` Available candidates: ${resolved.candidates.join(", ")}` : "";
+    return { ok: false, error: `No feedback found for candidate "${candidateName}".${suffix}`, availableRounds: [] };
   }
 
   const parsed = parseRound(round);
@@ -276,7 +326,7 @@ export async function getFeedback(candidateName: string, round: string): Promise
     const base = path.basename(fp);
 
     // New format match
-    if (base.includes(`_round-${wantedRoundNumber}.md`)) return true;
+    if (new RegExp(`_round-${wantedRoundNumber}(?:-[a-z0-9-]+)?\\.md$`, "i").test(base)) return true;
 
     // Old format match (best-effort)
     // old filename: round-{n}-{type}-{interviewer}.md

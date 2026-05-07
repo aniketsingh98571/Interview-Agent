@@ -5,7 +5,15 @@ import type { ConversationState, ThreadKey } from "../state/threadState.js";
 import { clearThreadState, getThreadState, setThreadState } from "../state/threadState.js";
 import { SYSTEM_PROMPT } from "./prompt.js";
 import { tool_get_feedback, tool_list_rounds } from "../tools/feedbackTools.js";
-import { webSearch, WebSearchInputSchema } from "../tools/webSearch.js";
+import {
+  ClearThreadStateArgsSchema,
+  GetFeedbackArgsSchema,
+  ListRoundsArgsSchema,
+  SaveFeedbackArgsSchema,
+  TOOL_SPECS,
+  WebSearchArgsSchema,
+} from "../tools/toolSpecs.js";
+import { webSearch } from "../tools/webSearch.js";
 import { saveFeedback } from "../storage/feedbackStore.js";
 
 export type AgentContext = {
@@ -29,55 +37,9 @@ function stateToText(state: ConversationState): string {
   return `${cand}, ${rnd}`;
 }
 
-function isInterviewRelated(text: string): boolean {
-  const t = (text ?? "").trim().toLowerCase();
-  if (!t) return true;
-
-  // Always allow obvious supported commands/verbs.
-  const allow = [
-    "help",
-    "save",
-    "record",
-    "feedback",
-    "candidate",
-    "round",
-    "interviewer",
-    "list rounds",
-    "get feedback",
-    "questions",
-    "follow-up",
-    "follow up",
-    "interview",
-    "hld",
-    "lld",
-    "dsa",
-    "hm",
-    "behavioral",
-    "system design",
-    "sysdesign",
-  ];
-  if (allow.some((k) => t.includes(k))) return true;
-
-  // If it looks like a general chat request, treat as out-of-scope.
-  return false;
-}
-
 export async function runAgent(rawText: string, ctx: AgentContext & { threadContext?: string }): Promise<string> {
   const { text, threadContext } = AgentInputSchema.parse({ text: rawText, threadContext: ctx.threadContext });
   const state = await getThreadState(ctx.thread);
-
-  if (!isInterviewRelated(text)) {
-    return [
-      "I can only help with interview feedback and interview follow-up questions.",
-      "",
-      "Try:",
-      "- `help`",
-      "- `save feedback John Doe round 1 dsa interviewer Alice: <notes>`",
-      "- `list rounds for John Doe`",
-      "- `get feedback John Doe round 3`",
-      "- `what questions should I ask this candidate?`",
-    ].join("\n");
-  }
 
   const baseURL = ctx.env.OLLAMA_BASE_URL.replace(/\/+$/g, "");
   const providerBaseURL = baseURL.endsWith("/api") ? baseURL : `${baseURL}/api`;
@@ -88,16 +50,7 @@ export async function runAgent(rawText: string, ctx: AgentContext & { threadCont
   const ollama = createOllama({ baseURL: providerBaseURL, headers });
   const model = ollama(ctx.env.OLLAMA_MODEL);
 
-  const SaveArgsSchema = z.object({
-    candidateName: z.string().min(1),
-    round: z.string().min(1),
-    interviewer: z.string().min(1),
-    feedback: z.string().min(1),
-  });
-  const ListRoundsArgsSchema = z.object({ candidateName: z.string().min(1) });
-  const GetFeedbackArgsSchema = z.object({ candidateName: z.string().min(1), round: z.string().optional() });
-
-  async function doSaveFeedback(args: z.infer<typeof SaveArgsSchema>) {
+  async function doSaveFeedback(args: z.infer<typeof SaveFeedbackArgsSchema>) {
     const ExtractSchema = z.object({
       strengths: z.string(),
       weaknesses: z.string(),
@@ -154,20 +107,24 @@ console.log(extractedObj,"extractedObj")
   }
 
   async function doListRounds(args: z.infer<typeof ListRoundsArgsSchema>) {
-    const res = await tool_list_rounds(args);
+    const candidateName = args.candidateName ?? state.candidateName;
+    if (!candidateName) return { ok: false as const, error: "Which candidate?" };
+    const res = await tool_list_rounds({ candidateName });
     if (res.ok) await setThreadState(ctx.thread, { candidateName: res.candidateName });
     return res;
   }
 
   async function doGetFeedback(args: z.infer<typeof GetFeedbackArgsSchema>) {
-    const res = await tool_get_feedback(args);
+    const candidateName = args.candidateName ?? state.candidateName;
+    if (!candidateName) return { ok: false as const, error: "Which candidate?", availableRounds: [] };
+    const res = await tool_get_feedback({ candidateName, round: args.round });
     if ((res as any).ok === true) {
-      await setThreadState(ctx.thread, { candidateName: args.candidateName, selectedRound: args.round });
+      await setThreadState(ctx.thread, { candidateName, selectedRound: args.round });
     }
     return res;
   }
 
-  async function doWebSearch(args: z.infer<typeof WebSearchInputSchema>) {
+  async function doWebSearch(args: z.infer<typeof WebSearchArgsSchema>) {
     return webSearch(args, { TAVILY_API_KEY: ctx.env.TAVILY_API_KEY });
   }
 
@@ -192,34 +149,32 @@ console.log(extractedObj,"extractedObj")
 
   const tools = {
     save_feedback: tool({
-      description:
-        "Save interviewer feedback for a candidate and round as a structured markdown file.",
-      inputSchema: SaveArgsSchema,
+      description: TOOL_SPECS.save_feedback.description,
+      inputSchema: SaveFeedbackArgsSchema,
       execute: async (args) => doSaveFeedback(args),
     }),
 
     list_rounds: tool({
-      description: "List all available feedback rounds for a candidate (without fetching any feedback).",
+      description: TOOL_SPECS.list_rounds.description,
       inputSchema: ListRoundsArgsSchema,
       execute: async (args) => doListRounds(args),
     }),
 
     get_feedback: tool({
-      description:
-        "Get feedback markdown for a candidate for a specific round. If round is missing, do NOT fetch; return available rounds instead.",
+      description: TOOL_SPECS.get_feedback.description,
       inputSchema: GetFeedbackArgsSchema,
       execute: async (args) => doGetFeedback(args),
     }),
 
     web_search: tool({
-      description: "Search the web for up-to-date info to help generate follow-up interview questions.",
-      inputSchema: WebSearchInputSchema,
+      description: TOOL_SPECS.web_search.description,
+      inputSchema: WebSearchArgsSchema,
       execute: async (args) => doWebSearch(args),
     }),
 
     clear_thread_state: tool({
-      description: "Clear the stored conversation state for this Slack thread.",
-      inputSchema: z.object({ confirm: z.boolean().default(true) }),
+      description: TOOL_SPECS.clear_thread_state.description,
+      inputSchema: ClearThreadStateArgsSchema,
       execute: async () => doClearThreadState(),
     }),
   };
@@ -237,7 +192,7 @@ console.log(extractedObj,"extractedObj")
     const args = toolCall.arguments ?? {};
 
     if (name === "save_feedback") {
-      const parsedArgs = SaveArgsSchema.parse(args);
+      const parsedArgs = SaveFeedbackArgsSchema.parse(args);
       const res = await doSaveFeedback(parsedArgs);
       return `Saved feedback for *${res.candidateName}* (round *${parsedArgs.round}*, interviewer *${parsedArgs.interviewer}*).\nFile: \`${res.filePath}\``;
     }
@@ -265,7 +220,7 @@ console.log(extractedObj,"extractedObj")
     }
 
     if (name === "web_search") {
-      const parsedArgs = WebSearchInputSchema.parse(args);
+      const parsedArgs = WebSearchArgsSchema.parse(args);
       const res = await doWebSearch(parsedArgs);
       return `Web search (${res.source}) for "${res.query}":\n${res.summary}`;
     }
@@ -312,16 +267,25 @@ ${(threadContext ?? "").trim() || "(empty)"}
     tools,
     stopWhen: stepCountIs(8),
   });
+  // Tool calls are executed by the AI SDK when `tools` are provided.
+  // If you need to detect whether tool calls happened, inspect `result.steps[*].toolCalls`.
+  const stepsToolCalls = ((result as any)?.steps ?? [])
+    .flatMap((s: any) => (Array.isArray(s?.toolCalls) ? s.toolCalls : []))
+    .filter(Boolean);
 
   const out = result.text.trim();
   if (out) {
-    // Try parsing model-produced tool-call JSON and execute it.
+    // Fallback execution path:
+    // Some models (or configurations) may output a JSON tool call as plain text instead of using native tool calling.
+    // Only run this fallback if we did NOT already observe native tool calls in steps.
     try {
-      const maybeJson = out.startsWith("{") ? out : out.match(/\{[\s\S]*\}/)?.[0];
-      if (maybeJson) {
-        const parsed = ToolCallSchema.safeParse(JSON.parse(maybeJson));
-        if (parsed.success) {
-          return await executeToolCall(parsed.data);
+      if (stepsToolCalls.length === 0) {
+        const maybeJson = out.startsWith("{") ? out : out.match(/\{[\s\S]*\}/)?.[0];
+        if (maybeJson) {
+          const parsed = ToolCallSchema.safeParse(JSON.parse(maybeJson));
+          if (parsed.success) {
+            return await executeToolCall(parsed.data);
+          }
         }
       }
     } catch {

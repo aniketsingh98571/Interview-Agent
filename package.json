@@ -10,10 +10,14 @@
     "dev": "tsx watch src/index.ts",
     "start": "node --enable-source-maps dist/index.js",
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "eval": "npx lmnr eval",
+    "eval:tools": "npx lmnr eval evals/interview-tools.eval.ts",
+    "eval:agent": "npx lmnr eval evals/agent-multiturn.eval.ts"
   },
   "dependencies": {
     "@slack/bolt": "^4.5.0",
+    "@lmnr-ai/lmnr": "^0.7.16",
     "ai": "^6.0.0",
     "dotenv": "^16.6.1",
     "ollama-ai-provider-v2": "^3.5.0",

@@ -175,3 +175,27 @@ Ollama is called via the provider at **`{OLLAMA_BASE_URL}/api`**.
 
 - **Local filesystem** — markdown files are local; if you run multiple instances, you’ll need shared storage.
 - **Slack scopes:** Reading threads in public/private channels may require `channels:history` / `groups:history` in addition to `im:history` for DMs.
+
+---
+
+## Evals (Laminar)
+
+This repo includes a small eval harness under `evals/` powered by **Laminar** (`@lmnr-ai/lmnr`).
+
+### Run evals
+
+Set env vars (same as the agent uses):
+
+- `OLLAMA_BASE_URL`
+- `OLLAMA_MODEL`
+- optional `OLLAMA_API_KEY`
+- optional `LMNR_PROJECT_API_KEY` (or `LMNR_API_KEY`) to upload results to Laminar
+
+Then:
+
+```bash
+cd interview_feedback_agent
+npm run eval:tools
+npm run eval:agent
+```
+
