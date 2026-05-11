@@ -197,3 +197,13 @@ npm run eval:tools
 npm run eval:agent
 ```
 
+Evals Output:
+
+Single Turn:
+<img width="1285" height="704" alt="Screenshot 2026-05-11 at 10 09 04 PM" src="https://github.com/user-attachments/assets/149db210-0371-4c00-8a63-3ddab4de46fa" />
+
+Multi Turn:
+<img width="1284" height="804" alt="Screenshot 2026-05-11 at 10 09 50 PM" src="https://github.com/user-attachments/assets/3726de55-0a6a-4d2a-85bd-ede8cab8cd7e" />
+
+
+
